@@ -28,6 +28,10 @@ class Command(BaseCommand):
     DELAY = 10 # max time when waiting for element
 
     def createChromeProfile(self, user_id):
+        chrome_options = Options()
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
         driver = webdriver.Chrome(
             service=Service(ChromeDriverManager().install())
         )
@@ -57,6 +61,9 @@ class Command(BaseCommand):
 
     def setChromeBrowser(self, chrome_profile):
         chrome_options = Options()
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
 
         if os.path.isdir(chrome_profile):
             chrome_options.add_argument(f"user-data-dir={chrome_profile}") # Each user will have their own profile
