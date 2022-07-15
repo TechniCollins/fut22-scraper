@@ -8,6 +8,7 @@ ENV C_FORCE_ROOT=true
 ENV PYTHONUNBUFFERED 1
 
 RUN apt-get update && \
+    apt-get -y install curl && \
     apt-get install -y --no-install-recommends build-essential
 
 RUN mkdir -p $APP_HOME
