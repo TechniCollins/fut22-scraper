@@ -22,7 +22,7 @@ RUN pip install -r requirements.txt
 RUN rm requirements.txt
 
 # Copy code into Image
-ADD ./five_twitter_engagement/ $APP_HOME
+ADD ./futscraper/ $APP_HOME
 
 # collect static files
 RUN $APP_HOME/manage.py collectstatic
