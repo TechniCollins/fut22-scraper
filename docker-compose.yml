@@ -10,8 +10,6 @@ services:
       - static:/application/staticfiles
     ports:
       - 8000:8000
-    depends_on:
-
   nginx:
     image: nginx:latest
     ports:
