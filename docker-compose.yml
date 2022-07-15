@@ -1,0 +1,38 @@
+version: '3.9'
+services:
+  web:
+    image: futscraper
+    build: .
+    env_file:
+      - .env-staging
+    command: gunicorn futscraper.wsgi:application --bind 0.0.0.0:8000 --limit-request-line 0 --access-logfile gunicorn.log --workers=4
+    volumes:
+      - static:/application/staticfiles
+    ports:
+      - 8000:8000
+    depends_on:
+
+  nginx:
+    image: nginx:latest
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - static:/application/static/:ro
+      - ./nginx/conf/:/etc/nginx/conf.d/:ro
+      - ./certbot/www:/var/www/certbot/:ro
+      - ./certbot/conf/:/etc/nginx/ssl/:ro
+    restart: "unless-stopped"
+    depends_on:
+      web:
+        condition: service_started
+
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - ./certbot/www/:/var/www/certbot/:rw
+      - ./certbot/conf/:/etc/letsencrypt/:rw
+
+volumes:
+  static:
+    driver: local
