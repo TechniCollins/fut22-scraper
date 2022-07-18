@@ -27,31 +27,41 @@ import getpass
 class Command(BaseCommand):
     DELAY = 10 # max time when waiting for element
 
-    def createChromeProfile(self, user_id):
-        chrome_options = Options()
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--headless')
-        chrome_options.add_argument('--disable-dev-shm-usage')
-        driver = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install())
-        )
-        chrome_profile = driver.capabilities.get("chrome").get("userDataDir")
+    def writeLog(self, b, message):
+        print(f"({b.business_name}): {datetime.now()} - {message}")
+        return
 
-        # By default selenium saves Chrome profiles in /tmp
+    def createChromeProfile(self, user_id):
+        # By default selenium saves profiles in /tmp
         # These files are deleted on shutdown, so copy them to
         # a "permanent" location
         os_user = getpass.getuser()
-        profile_dir = f"/home/{os_user}/fut22scraper-chromeprofiles/{user_id}"
+        profile_dir = f"/home/{os_user}/fut22scraper-mozprofiles/{user_id}"
+
+        options = Options()
+        # options.add_argument("--no-sandbox");
+        options.add_argument('--headless')
+        options.add_argument('--window-size=1325x744')
+        # options.add_argument('--disable-dev-shm-usage')
+        driver = webdriver.Chrome(
+            service=Service(ChromeDriverManager().install()),
+            options=options
+        )
+
+        profile = driver.capabilities.get("chrome").get("userDataDir")
+
         try:
-            shutil.copytree(chrome_profile, profile_dir)
+            # If profile exists, delete
+            if os.path.exists(profile_dir):
+                shutil.rmtree(profile_dir)
+
+            shutil.copytree(profile, profile_dir)
         except Exception as e:
             print(e)
             # Some file like SingletonCookie can't be copied. Dk what the problem is, so ignore
             # them for now
 
-        print(profile_dir)
-
-        # Save chrome profile
+        # Save profile
         b = BusinessDetail.objects.get(user__id=user_id)
         b.chrome_profile = profile_dir
         b.save()
@@ -59,18 +69,25 @@ class Command(BaseCommand):
         return profile_dir
 
 
-    def setChromeBrowser(self, chrome_profile):
-        chrome_options = Options()
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--headless')
-        chrome_options.add_argument('--disable-dev-shm-usage')
+    def setBrowser(self, b):
+        options = Options()
+        # options.add_argument('--no-sandbox')
+        options.add_argument('--headless')
+        options.add_argument('--window-size=1325x744')
+        # options.add_argument('--disable-dev-shm-usage')
 
-        if os.path.isdir(chrome_profile):
-            chrome_options.add_argument(f"user-data-dir={chrome_profile}") # Each user will have their own profile
+        profile = b.chrome_profile
+
+        # if profile is empty or not a directory, create new
+        if not profile or not os.path.isdir(profile):
+            self.writeLog(b, "No browser profile found. Creating")
+            profile = self.createChromeProfile(b.user.id)
+
+        options.add_argument(f"user-data-dir={profile}") # Each user will have their own profile
 
         driver = webdriver.Chrome(
             service=Service(ChromeDriverManager().install()),
-            options=chrome_options
+            options=options
         )
 
         return driver
@@ -147,6 +164,18 @@ class Command(BaseCommand):
 
             # if button exists, go through verification process
             if verification_button:
+                # Send email to request entry of verification code
+                message = f"You are one step away from completing your integration. EA will send you a verification code shortly, please submit it here;\nhttps://futscraper.softlever.com/admin/scraper/verificationcode/add/"
+
+                mail = EmailMessage(
+                    subject=f"EA verfication",
+                    body=message,
+                    to=[b.user.email, "collins@softlever.com"]
+                )
+
+                mail.send()
+
+                # Click on email verification button
                 verification_button.click()
 
                 # For now, we will require a verification code record to be added to the database.
@@ -171,13 +200,9 @@ class Command(BaseCommand):
 
 
     def scrapeFUT(self, b):
-        chrome_profile = b.chrome_profile
+        self.writeLog(b, "Setting up browser")
 
-        if not chrome_profile:
-            print("No chrome profile found. Creating")
-            chrome_profile = self.createChromeProfile(b.user.id)
-
-        driver = self.setChromeBrowser(chrome_profile)
+        driver = self.setBrowser(b)
 
         # Go to fut22 web app
         driver.get("https://www.ea.com/fifa/ultimate-team/web-app/")
@@ -187,11 +212,12 @@ class Command(BaseCommand):
 
         # Log in
         if login:
-            print("Logging in to FUT22")
+            self.writeLog(b, "Logging in to FUT22")
             self.loginToEA(driver, b)
 
         try:
             # After settings button is available, click on it
+            self.writeLog(b, "Going to settings")
             settings_button = WebDriverWait(
                 driver, 30
             ).until(
@@ -201,6 +227,7 @@ class Command(BaseCommand):
             )
             settings_button.click()
 
+            self.writeLog(b, "Accessing Playtime")
             playtime_button = WebDriverWait(
                 driver, self.DELAY
             ).until(
@@ -212,11 +239,14 @@ class Command(BaseCommand):
 
             time.sleep(3)
 
+            self.writeLog(b, "Getting matches data")
             matches = self.checkIfElementExistsByXpath(driver, '/html/body/main/section/section/div[2]/div/div[2]/div[4]/div[@class="tileContent"]/div/div/div[1]/span[@class="value"]')
 
             if not matches:
-                print("Matches data not found.")
+                self.writeLog(b, "Matches data not found.")
                 return
+
+            self.writeLog(b, "Processing Results...")
 
             total_week_matches = int(matches.text.split("/")[0])
 
@@ -233,15 +263,15 @@ class Command(BaseCommand):
 
             message = f"{b.business_name}\nTotal Games this week: {total_week_matches}"
 
-            # If there's no data yet
-            if not last_match.count:
+            # If there's no data for yesterday
+            if not last_match:
                 message = f"{message}\nTotal matches today: No data"
-
-            # If matches have reset
-            if total_week_matches < last_match.count:
-                message = f"{message}\nTotal matches today: {last_match.count}"
             else:
-                message = f"{message}\nTotal matches today: {total_week_matches - last_match.count}"
+                # If matches have reset
+                if total_week_matches < last_match.count:
+                    message = f"{message}\nTotal matches today: {last_match.count}"
+                else:
+                    message = f"{message}\nTotal matches today: {total_week_matches - last_match.count}"
 
             # Save today's data
             MatchCount.objects.create(
@@ -249,6 +279,7 @@ class Command(BaseCommand):
                 count=total_week_matches
             )
 
+            self.writeLog(b, "Emailing Results")
             # Send results via email
             mail = EmailMessage(
                 subject=f"Fifa 22 games played - {datetime.today()}",
@@ -259,7 +290,7 @@ class Command(BaseCommand):
             mail.send()
 
         except TimeoutException:
-            print("Timed out before loading web app")
+            self.writeLog(b, "Timed out before loading web app")
 
         return
 
