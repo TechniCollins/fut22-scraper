@@ -39,10 +39,10 @@ class Command(BaseCommand):
         profile_dir = f"/home/{os_user}/fut22scraper-mozprofiles/{user_id}"
 
         options = Options()
-        # options.add_argument("--no-sandbox");
+        options.add_argument("--no-sandbox");
         options.add_argument('--headless')
         options.add_argument('--window-size=1325x744')
-        # options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-dev-shm-usage')
         driver = webdriver.Chrome(
             service=Service(ChromeDriverManager().install()),
             options=options
@@ -71,10 +71,10 @@ class Command(BaseCommand):
 
     def setBrowser(self, b):
         options = Options()
-        # options.add_argument('--no-sandbox')
+        options.add_argument('--no-sandbox')
         options.add_argument('--headless')
         options.add_argument('--window-size=1325x744')
-        # options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-dev-shm-usage')
 
         profile = b.chrome_profile
 
